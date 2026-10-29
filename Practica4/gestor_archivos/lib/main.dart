@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 void main() {
@@ -58,15 +60,44 @@ class _GestorArchivosAppState extends State<GestorArchivosApp> {
   }
 }
 
-class ExploradorView extends StatelessWidget {
+class ExploradorView extends StatefulWidget {
   final int temaSeleccionado;
   final ValueChanged<int> onThemeChanged;
 
   const ExploradorView({
     super.key,
     required this.temaSeleccionado,
-    required this.onThemeChanged
+    required this.onThemeChanged,
   });
+
+  @override
+  State<ExploradorView> createState() => _ExploradorViewState();
+}
+
+class _ExploradorViewState extends State<ExploradorView> {
+  String? _rutaActual;
+  List<FileSystemEntity> _archivos = [];
+
+  Future<void> _seleccionarCarpeta() async {
+    String? ruta = await FilePicker.getDirectoryPath();
+    if (ruta != null) {
+      _cargarDirectorio(ruta);
+    }
+  }
+
+  void _cargarDirectorio(String ruta) {
+    try {
+      final directorio = Directory(ruta);
+      setState(() {
+        _rutaActual = ruta;
+        _archivos = directorio.listSync();
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error al leer el directorio o acceso denegado')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,11 +107,11 @@ class ExploradorView extends StatelessWidget {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
           DropdownButton<int>(
-            value: temaSeleccionado,
+            value: widget.temaSeleccionado,
             dropdownColor: Theme.of(context).colorScheme.surface,
             underline: const SizedBox(),
             onChanged: (int? newValue) {
-              if (newValue != null) onThemeChanged(newValue);
+              if (newValue != null) widget.onThemeChanged(newValue);
             },
             items: const [
               DropdownMenuItem(value: 0, child: Text('Guinda (IPN)')),
@@ -91,19 +122,36 @@ class ExploradorView extends StatelessWidget {
           const SizedBox(width: 16),
         ],
       ),
-      body: Center(
+      body: _rutaActual == null
+          ? Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.folder_open, size: 80, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 16),
-            const Text('Espacio para renderizar el sistema de archivos'),
+            const Text('Ninguna carpeta seleccionada'),
           ],
         ),
+      )
+          : ListView.builder(
+        itemCount: _archivos.length,
+        itemBuilder: (context, index) {
+          final entidad = _archivos[index];
+          final esCarpeta = entidad is Directory;
+          final nombre = entidad.path.split(Platform.pathSeparator).last;
+
+          return ListTile(
+            leading: Icon(
+              esCarpeta ? Icons.folder : Icons.insert_drive_file,
+              color: esCarpeta ? Colors.amber : Colors.grey,
+            ),
+            title: Text(nombre),
+            onTap: esCarpeta ? () => _cargarDirectorio(entidad.path) : null,
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-        },
+        onPressed: _seleccionarCarpeta,
         icon: const Icon(Icons.add),
         label: const Text('Seleccionar Carpeta'),
       ),
