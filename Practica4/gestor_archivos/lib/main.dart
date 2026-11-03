@@ -99,6 +99,49 @@ class _ExploradorViewState extends State<ExploradorView> {
     }
   }
 
+  Widget _construirBreadcrumbs() {
+    if (_rutaActual == null) return const SizedBox.shrink();
+
+    List<String> partes = _rutaActual!.split(Platform.pathSeparator);
+    if (partes.isNotEmpty && partes[0].isEmpty) {
+      partes[0] = Platform.pathSeparator;
+    }
+
+    return Container(
+      height: 48,
+      color: Theme.of(context).colorScheme.surface.withOpacity(0.5),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: partes.length,
+        separatorBuilder: (context, index) => const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+        itemBuilder: (context, index) {
+          final esUltimo = index == partes.length - 1;
+          return TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+            ),
+            onPressed: esUltimo ? null : () {
+              String nuevaRuta = partes.sublist(0, index + 1).join(Platform.pathSeparator);
+              if (nuevaRuta.startsWith('${Platform.pathSeparator}${Platform.pathSeparator}')) {
+                nuevaRuta = nuevaRuta.substring(1);
+              }
+              _cargarDirectorio(nuevaRuta);
+            },
+            child: Text(
+              partes[index] == Platform.pathSeparator ? 'Inicio' : partes[index],
+              style: TextStyle(
+                color: esUltimo ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface,
+                fontWeight: esUltimo ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -133,22 +176,30 @@ class _ExploradorViewState extends State<ExploradorView> {
           ],
         ),
       )
-          : ListView.builder(
-        itemCount: _archivos.length,
-        itemBuilder: (context, index) {
-          final entidad = _archivos[index];
-          final esCarpeta = entidad is Directory;
-          final nombre = entidad.path.split(Platform.pathSeparator).last;
+          : Column(
+        children: [
+          _construirBreadcrumbs(),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _archivos.length,
+              itemBuilder: (context, index) {
+                final entidad = _archivos[index];
+                final esCarpeta = entidad is Directory;
+                final nombre = entidad.path.split(Platform.pathSeparator).last;
 
-          return ListTile(
-            leading: Icon(
-              esCarpeta ? Icons.folder : Icons.insert_drive_file,
-              color: esCarpeta ? Colors.amber : Colors.grey,
+                return ListTile(
+                  leading: Icon(
+                    esCarpeta ? Icons.folder : Icons.insert_drive_file,
+                    color: esCarpeta ? Colors.amber : Colors.grey,
+                  ),
+                  title: Text(nombre),
+                  onTap: esCarpeta ? () => _cargarDirectorio(entidad.path) : null,
+                );
+              },
             ),
-            title: Text(nombre),
-            onTap: esCarpeta ? () => _cargarDirectorio(entidad.path) : null,
-          );
-        },
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _seleccionarCarpeta,
