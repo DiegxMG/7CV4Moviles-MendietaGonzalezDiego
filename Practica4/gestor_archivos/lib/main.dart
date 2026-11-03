@@ -6,6 +6,7 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/dracula.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:share_plus/share_plus.dart';
 
 void main() {
   runApp(const GestorArchivosApp());
@@ -143,7 +144,7 @@ class _ExploradorViewState extends State<ExploradorView> {
         }
       }
     } catch (e) {
-      // Si falla la lectura, mantiene los valores en "No disponible"
+      // Ignora el error y mantiene "No disponible"
     }
 
     showDialog(
@@ -171,6 +172,29 @@ class _ExploradorViewState extends State<ExploradorView> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _mostrarDialogoNoSoportado(String ruta) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Formato no soportado'),
+        content: const Text('Este tipo de archivo no se puede visualizar nativamente en la aplicación. ¿Deseas compartirlo o abrirlo con otra aplicación del sistema?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Share.shareXFiles([XFile(ruta)], text: 'Exportando archivo');
+            },
+            child: const Text('Exportar / Compartir'),
           ),
         ],
       ),
@@ -265,6 +289,8 @@ class _ExploradorViewState extends State<ExploradorView> {
                 final entidad = _archivos[index];
                 final esCarpeta = entidad is Directory;
                 final nombre = entidad.path.split(Platform.pathSeparator).last;
+                final extension = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
+                final esSoportado = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'json', 'xml'].contains(extension);
 
                 return ListTile(
                   leading: Icon(
@@ -278,12 +304,16 @@ class _ExploradorViewState extends State<ExploradorView> {
                   ),
                   onTap: esCarpeta
                       ? () => _cargarDirectorio(entidad.path)
-                      : () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => VisorArchivo(archivo: File(entidad.path)),
-                    ),
-                  ),
+                      : () {
+                    if (esSoportado) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => VisorArchivo(archivo: File(entidad.path))),
+                      );
+                    } else {
+                      _mostrarDialogoNoSoportado(entidad.path);
+                    }
+                  },
                 );
               },
             ),
