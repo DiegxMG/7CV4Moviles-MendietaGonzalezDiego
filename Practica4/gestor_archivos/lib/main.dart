@@ -84,7 +84,6 @@ class _ExploradorViewState extends State<ExploradorView> {
   String? _rutaActual;
   List<FileSystemEntity> _archivos = [];
 
-  // Variables para gestionar Copiar y Mover
   FileSystemEntity? _entidadPortapapeles;
   String? _accionPortapapeles;
 
@@ -147,9 +146,7 @@ class _ExploradorViewState extends State<ExploradorView> {
           default: tipoMime = ext.isNotEmpty ? 'application/octet-stream ($ext)' : 'No disponible';
         }
       }
-    } catch (e) {
-      // Ignora el error y mantiene "No disponible"
-    }
+    } catch (e) {}
 
     showDialog(
       context: context,
@@ -204,8 +201,6 @@ class _ExploradorViewState extends State<ExploradorView> {
       ),
     );
   }
-
-  // --- OPERACIONES DE GESTIÓN (NUEVO) ---
 
   void _eliminar(FileSystemEntity entidad) {
     showDialog(
@@ -302,8 +297,6 @@ class _ExploradorViewState extends State<ExploradorView> {
     }
   }
 
-  // --------------------------------------
-
   Widget _construirBreadcrumbs() {
     if (_rutaActual == null) return const SizedBox.shrink();
 
@@ -321,7 +314,7 @@ class _ExploradorViewState extends State<ExploradorView> {
         itemCount: partes.length,
         separatorBuilder: (context, index) => const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
         itemBuilder: (context, index) {
-          final esUltimo = index == partes.length - 1; // Corrección del error tipográfico
+          final esUltimo = index == partes.length - 1;
           return TextButton(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -394,14 +387,38 @@ class _ExploradorViewState extends State<ExploradorView> {
                 final nombre = entidad.path.split(Platform.pathSeparator).last;
                 final extension = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
                 final esSoportado = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'json', 'xml'].contains(extension);
+                final esImagen = ['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(extension);
+
+                // --- NUEVO: Lógica de ícono o miniatura optimizada ---
+                Widget leadingWidget;
+                if (esCarpeta) {
+                  leadingWidget = const Icon(Icons.folder, color: Colors.amber, size: 40);
+                } else if (esImagen) {
+                  leadingWidget = Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.file(
+                        File(entidad.path),
+                        fit: BoxFit.cover,
+                        cacheWidth: 120, // Clave para la optimización de memoria (caché de miniaturas)
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 24, color: Colors.grey),
+                      ),
+                    ),
+                  );
+                } else {
+                  leadingWidget = const Icon(Icons.insert_drive_file, color: Colors.grey, size: 40);
+                }
+                // -----------------------------------------------------
 
                 return ListTile(
-                  leading: Icon(
-                    esCarpeta ? Icons.folder : Icons.insert_drive_file,
-                    color: esCarpeta ? Colors.amber : Colors.grey,
-                  ),
+                  leading: leadingWidget,
                   title: Text(nombre),
-                  // Se reemplazó el IconButton por un PopupMenuButton para albergar todas las acciones
                   trailing: PopupMenuButton<String>(
                     onSelected: (valor) {
                       switch (valor) {
@@ -451,7 +468,6 @@ class _ExploradorViewState extends State<ExploradorView> {
           ),
         ],
       ),
-      // Se agregó un botón de pegado flotante condicional
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
