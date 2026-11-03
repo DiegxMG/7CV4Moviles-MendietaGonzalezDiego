@@ -88,7 +88,6 @@ class _ExploradorViewState extends State<ExploradorView> {
   FileSystemEntity? _entidadPortapapeles;
   String? _accionPortapapeles;
 
-  // --- VARIABLES PARA PERSISTENCIA ---
   late SharedPreferences _prefs;
   List<String> _favoritos = [];
   List<String> _recientes = [];
@@ -125,18 +124,14 @@ class _ExploradorViewState extends State<ExploradorView> {
       _recientes.remove(ruta);
       _recientes.insert(0, ruta);
       if (_recientes.length > 20) {
-        _recientes = _recientes.sublist(0, 20); // Limita el historial a 20 elementos
+        _recientes = _recientes.sublist(0, 20);
       }
       _prefs.setStringList('recientes', _recientes);
     });
   }
-  // -----------------------------------
 
   Future<void> _seleccionarCarpeta() async {
     if (Platform.isAndroid) {
-      if (!await Permission.manageExternalStorage.isGranted) {
-        await Permission.manageExternalStorage.request();
-      }
       if (!await Permission.storage.isGranted) {
         await Permission.storage.request();
       }
@@ -155,28 +150,32 @@ class _ExploradorViewState extends State<ExploradorView> {
         _rutaActual = ruta;
         _archivos = directorio.listSync();
       });
-      _registrarReciente(ruta); // Registra la carpeta en el historial
+      _registrarReciente(ruta);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al leer el directorio o acceso denegado')),
+        const SnackBar(content: Text('Acceso restringido por el sistema (Scoped Storage). Selecciona otra carpeta autorizada.')),
       );
     }
   }
 
   void _abrirRutaDirecta(String ruta) {
-    if (FileSystemEntity.isDirectorySync(ruta)) {
-      _cargarDirectorio(ruta);
-    } else if (FileSystemEntity.isFileSync(ruta)) {
-      final nombre = ruta.split(Platform.pathSeparator).last;
-      final extension = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
-      final esSoportado = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'json', 'xml'].contains(extension);
-      _registrarReciente(ruta); // Registra el archivo en el historial
+    try {
+      if (FileSystemEntity.isDirectorySync(ruta)) {
+        _cargarDirectorio(ruta);
+      } else if (FileSystemEntity.isFileSync(ruta)) {
+        final nombre = ruta.split(Platform.pathSeparator).last;
+        final extension = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
+        final esSoportado = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'json', 'xml'].contains(extension);
+        _registrarReciente(ruta);
 
-      if (esSoportado) {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => VisorArchivo(archivo: File(ruta))));
-      } else {
-        _mostrarDialogoNoSoportado(ruta);
+        if (esSoportado) {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => VisorArchivo(archivo: File(ruta))));
+        } else {
+          _mostrarDialogoNoSoportado(ruta);
+        }
       }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ruta no disponible o archivo inexistente')));
     }
   }
 
@@ -426,7 +425,6 @@ class _ExploradorViewState extends State<ExploradorView> {
           const SizedBox(width: 16),
         ],
       ),
-      // --- MENU LATERAL (DRAWER) PARA FAVORITOS E HISTORIAL ---
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -477,7 +475,6 @@ class _ExploradorViewState extends State<ExploradorView> {
           ],
         ),
       ),
-      // --------------------------------------------------------
       body: _rutaActual == null
           ? Center(
         child: Column(
@@ -540,7 +537,7 @@ class _ExploradorViewState extends State<ExploradorView> {
                   trailing: PopupMenuButton<String>(
                     onSelected: (valor) {
                       switch (valor) {
-                        case 'favorito': _toggleFavorito(entidad.path); break; // Nuevo caso
+                        case 'favorito': _toggleFavorito(entidad.path); break;
                         case 'info': _mostrarMetadatos(entidad); break;
                         case 'copiar':
                           setState(() {
