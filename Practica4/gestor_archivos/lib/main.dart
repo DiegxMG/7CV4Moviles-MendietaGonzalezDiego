@@ -84,6 +84,10 @@ class _ExploradorViewState extends State<ExploradorView> {
   String? _rutaActual;
   List<FileSystemEntity> _archivos = [];
 
+  // Variables para gestionar Copiar y Mover
+  FileSystemEntity? _entidadPortapapeles;
+  String? _accionPortapapeles;
+
   Future<void> _seleccionarCarpeta() async {
     if (Platform.isAndroid) {
       if (!await Permission.manageExternalStorage.isGranted) {
@@ -201,6 +205,105 @@ class _ExploradorViewState extends State<ExploradorView> {
     );
   }
 
+  // --- OPERACIONES DE GESTIÓN (NUEVO) ---
+
+  void _eliminar(FileSystemEntity entidad) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar eliminación'),
+        content: const Text('¿Estás seguro de que deseas eliminar este elemento de forma permanente?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              try {
+                entidad.deleteSync(recursive: true);
+                _cargarDirectorio(_rutaActual!);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Permisos insuficientes para eliminar')));
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _renombrar(FileSystemEntity entidad) {
+    final TextEditingController controlador = TextEditingController(text: entidad.path.split(Platform.pathSeparator).last);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Renombrar'),
+        content: TextField(
+          controller: controlador,
+          decoration: const InputDecoration(labelText: 'Nuevo nombre'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () {
+              try {
+                final nuevoPath = '${entidad.parent.path}${Platform.pathSeparator}${controlador.text}';
+                entidad.renameSync(nuevoPath);
+                _cargarDirectorio(_rutaActual!);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al renombrar el archivo')));
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copiarDirectorio(Directory origen, Directory destino) {
+    destino.createSync(recursive: true);
+    for (var entidad in origen.listSync(recursive: false)) {
+      final nuevoPath = '${destino.path}${Platform.pathSeparator}${entidad.path.split(Platform.pathSeparator).last}';
+      if (entidad is Directory) {
+        _copiarDirectorio(entidad, Directory(nuevoPath));
+      } else if (entidad is File) {
+        entidad.copySync(nuevoPath);
+      }
+    }
+  }
+
+  void _ejecutarPegar() {
+    if (_entidadPortapapeles == null || _rutaActual == null) return;
+
+    final nombre = _entidadPortapapeles!.path.split(Platform.pathSeparator).last;
+    final destinoPath = '$_rutaActual${Platform.pathSeparator}$nombre';
+
+    try {
+      if (_accionPortapapeles == 'mover') {
+        _entidadPortapapeles!.renameSync(destinoPath);
+      } else if (_accionPortapapeles == 'copiar') {
+        if (_entidadPortapapeles is Directory) {
+          _copiarDirectorio(_entidadPortapapeles! as Directory, Directory(destinoPath));
+        } else if (_entidadPortapapeles is File) {
+          (_entidadPortapapeles! as File).copySync(destinoPath);
+        }
+      }
+      setState(() {
+        _entidadPortapapeles = null;
+        _accionPortapapeles = null;
+      });
+      _cargarDirectorio(_rutaActual!);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error de permisos al procesar la operación')));
+    }
+  }
+
+  // --------------------------------------
+
   Widget _construirBreadcrumbs() {
     if (_rutaActual == null) return const SizedBox.shrink();
 
@@ -218,7 +321,7 @@ class _ExploradorViewState extends State<ExploradorView> {
         itemCount: partes.length,
         separatorBuilder: (context, index) => const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
         itemBuilder: (context, index) {
-          final esUltimo = index == partes.length - 1;
+          final esUltimo = index == partes.length - 1; // Corrección del error tipográfico
           return TextButton(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -298,9 +401,37 @@ class _ExploradorViewState extends State<ExploradorView> {
                     color: esCarpeta ? Colors.amber : Colors.grey,
                   ),
                   title: Text(nombre),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.info_outline),
-                    onPressed: () => _mostrarMetadatos(entidad),
+                  // Se reemplazó el IconButton por un PopupMenuButton para albergar todas las acciones
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (valor) {
+                      switch (valor) {
+                        case 'info': _mostrarMetadatos(entidad); break;
+                        case 'copiar':
+                          setState(() {
+                            _entidadPortapapeles = entidad;
+                            _accionPortapapeles = 'copiar';
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copiado. Navega al destino y presiona Pegar.')));
+                          break;
+                        case 'mover':
+                          setState(() {
+                            _entidadPortapapeles = entidad;
+                            _accionPortapapeles = 'mover';
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Listo para mover. Navega al destino y presiona Pegar.')));
+                          break;
+                        case 'renombrar': _renombrar(entidad); break;
+                        case 'eliminar': _eliminar(entidad); break;
+                      }
+                    },
+                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                      const PopupMenuItem<String>(value: 'info', child: Text('Información')),
+                      const PopupMenuItem<String>(value: 'copiar', child: Text('Copiar')),
+                      const PopupMenuItem<String>(value: 'mover', child: Text('Mover')),
+                      const PopupMenuItem<String>(value: 'renombrar', child: Text('Renombrar')),
+                      const PopupMenuItem<String>(value: 'eliminar', child: Text('Eliminar', style: TextStyle(color: Colors.red))),
+                    ],
+                    icon: const Icon(Icons.more_vert),
                   ),
                   onTap: esCarpeta
                       ? () => _cargarDirectorio(entidad.path)
@@ -320,10 +451,27 @@ class _ExploradorViewState extends State<ExploradorView> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _seleccionarCarpeta,
-        icon: const Icon(Icons.add),
-        label: const Text('Seleccionar Carpeta'),
+      // Se agregó un botón de pegado flotante condicional
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          if (_entidadPortapapeles != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: FloatingActionButton.extended(
+                heroTag: 'btnPegar',
+                onPressed: _ejecutarPegar,
+                icon: const Icon(Icons.paste),
+                label: Text('Pegar (${_accionPortapapeles})'),
+              ),
+            ),
+          FloatingActionButton.extended(
+            heroTag: 'btnSeleccionar',
+            onPressed: _seleccionarCarpeta,
+            icon: const Icon(Icons.add),
+            label: const Text('Seleccionar Carpeta'),
+          ),
+        ],
       ),
     );
   }
