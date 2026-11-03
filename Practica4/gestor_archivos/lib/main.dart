@@ -1,6 +1,11 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:flutter_highlight/themes/github.dart';
+import 'package:flutter_highlight/themes/dracula.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() {
   runApp(const GestorArchivosApp());
@@ -79,6 +84,16 @@ class _ExploradorViewState extends State<ExploradorView> {
   List<FileSystemEntity> _archivos = [];
 
   Future<void> _seleccionarCarpeta() async {
+    // Se agregan los permisos requeridos por Android 11+
+    if (Platform.isAndroid) {
+      if (!await Permission.manageExternalStorage.isGranted) {
+        await Permission.manageExternalStorage.request();
+      }
+      if (!await Permission.storage.isGranted) {
+        await Permission.storage.request();
+      }
+    }
+
     String? ruta = await FilePicker.getDirectoryPath();
     if (ruta != null) {
       _cargarDirectorio(ruta);
@@ -116,7 +131,7 @@ class _ExploradorViewState extends State<ExploradorView> {
         itemCount: partes.length,
         separatorBuilder: (context, index) => const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
         itemBuilder: (context, index) {
-          final esUltimo = index == partes.length - 1;
+          final esUltimo = index == partes.length - 1; // Se corrigió el error de sintaxis de tu bloque
           return TextButton(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -194,7 +209,14 @@ class _ExploradorViewState extends State<ExploradorView> {
                     color: esCarpeta ? Colors.amber : Colors.grey,
                   ),
                   title: Text(nombre),
-                  onTap: esCarpeta ? () => _cargarDirectorio(entidad.path) : null,
+                  onTap: esCarpeta
+                      ? () => _cargarDirectorio(entidad.path)
+                      : () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VisorArchivo(archivo: File(entidad.path)),
+                    ),
+                  ),
                 );
               },
             ),
@@ -205,6 +227,72 @@ class _ExploradorViewState extends State<ExploradorView> {
         onPressed: _seleccionarCarpeta,
         icon: const Icon(Icons.add),
         label: const Text('Seleccionar Carpeta'),
+      ),
+    );
+  }
+}
+
+class VisorArchivo extends StatelessWidget {
+  final File archivo;
+
+  const VisorArchivo({super.key, required this.archivo});
+
+  @override
+  Widget build(BuildContext context) {
+    final extension = archivo.path.split('.').last.toLowerCase();
+    final esImagen = ['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(extension);
+    final esModoOscuro = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(archivo.path.split(Platform.pathSeparator).last),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: esImagen
+          ? PhotoView(
+        imageProvider: FileImage(archivo),
+        backgroundDecoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
+      )
+          : FutureBuilder<String>(
+        future: archivo.readAsString(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Error al leer el archivo. Es posible que el formato no esté soportado o no sea texto plano.\n\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+
+          final contenido = snapshot.data ?? '';
+          String lenguaje = 'plaintext';
+          if (extension == 'json') lenguaje = 'json';
+          if (extension == 'xml') lenguaje = 'xml';
+
+          return SizedBox(
+            width: double.infinity,
+            height: double.infinity,
+            child: SingleChildScrollView(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: HighlightView(
+                  contenido,
+                  language: lenguaje,
+                  theme: esModoOscuro ? draculaTheme : githubTheme,
+                  padding: const EdgeInsets.all(12),
+                  textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
