@@ -252,6 +252,7 @@ class VisorArchivo extends StatelessWidget {
           ? PhotoView(
         imageProvider: FileImage(archivo),
         backgroundDecoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
+        enableRotation: true, // <-- Esta es la propiedad que cumple el requisito
       )
           : FutureBuilder<String>(
         future: archivo.readAsString(),
