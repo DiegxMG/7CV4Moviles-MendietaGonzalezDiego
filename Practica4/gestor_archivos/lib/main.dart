@@ -7,6 +7,7 @@ import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/dracula.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const GestorArchivosApp());
@@ -87,6 +88,50 @@ class _ExploradorViewState extends State<ExploradorView> {
   FileSystemEntity? _entidadPortapapeles;
   String? _accionPortapapeles;
 
+  // --- VARIABLES PARA PERSISTENCIA ---
+  late SharedPreferences _prefs;
+  List<String> _favoritos = [];
+  List<String> _recientes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _inicializarPreferencias();
+  }
+
+  Future<void> _inicializarPreferencias() async {
+    _prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _favoritos = _prefs.getStringList('favoritos') ?? [];
+      _recientes = _prefs.getStringList('recientes') ?? [];
+    });
+  }
+
+  void _toggleFavorito(String ruta) {
+    setState(() {
+      if (_favoritos.contains(ruta)) {
+        _favoritos.remove(ruta);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Eliminado de favoritos')));
+      } else {
+        _favoritos.add(ruta);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Añadido a favoritos')));
+      }
+      _prefs.setStringList('favoritos', _favoritos);
+    });
+  }
+
+  void _registrarReciente(String ruta) {
+    setState(() {
+      _recientes.remove(ruta);
+      _recientes.insert(0, ruta);
+      if (_recientes.length > 20) {
+        _recientes = _recientes.sublist(0, 20); // Limita el historial a 20 elementos
+      }
+      _prefs.setStringList('recientes', _recientes);
+    });
+  }
+  // -----------------------------------
+
   Future<void> _seleccionarCarpeta() async {
     if (Platform.isAndroid) {
       if (!await Permission.manageExternalStorage.isGranted) {
@@ -110,10 +155,28 @@ class _ExploradorViewState extends State<ExploradorView> {
         _rutaActual = ruta;
         _archivos = directorio.listSync();
       });
+      _registrarReciente(ruta); // Registra la carpeta en el historial
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al leer el directorio o acceso denegado')),
       );
+    }
+  }
+
+  void _abrirRutaDirecta(String ruta) {
+    if (FileSystemEntity.isDirectorySync(ruta)) {
+      _cargarDirectorio(ruta);
+    } else if (FileSystemEntity.isFileSync(ruta)) {
+      final nombre = ruta.split(Platform.pathSeparator).last;
+      final extension = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
+      final esSoportado = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'json', 'xml'].contains(extension);
+      _registrarReciente(ruta); // Registra el archivo en el historial
+
+      if (esSoportado) {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => VisorArchivo(archivo: File(ruta))));
+      } else {
+        _mostrarDialogoNoSoportado(ruta);
+      }
     }
   }
 
@@ -363,6 +426,58 @@ class _ExploradorViewState extends State<ExploradorView> {
           const SizedBox(width: 16),
         ],
       ),
+      // --- MENU LATERAL (DRAWER) PARA FAVORITOS E HISTORIAL ---
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Icon(Icons.folder_special, size: 48, color: Colors.white),
+                  SizedBox(height: 8),
+                  Text('Accesos Rápidos', style: TextStyle(color: Colors.white, fontSize: 20)),
+                ],
+              ),
+            ),
+            if (_favoritos.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('FAVORITOS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              ),
+              ..._favoritos.map((ruta) => ListTile(
+                leading: const Icon(Icons.star, color: Colors.amber),
+                title: Text(ruta.split(Platform.pathSeparator).last),
+                subtitle: Text(ruta, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () {
+                  Navigator.pop(context);
+                  _abrirRutaDirecta(ruta);
+                },
+              )),
+              const Divider(),
+            ],
+            if (_recientes.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('RECIENTES', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              ),
+              ..._recientes.map((ruta) => ListTile(
+                leading: const Icon(Icons.history),
+                title: Text(ruta.split(Platform.pathSeparator).last),
+                subtitle: Text(ruta, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () {
+                  Navigator.pop(context);
+                  _abrirRutaDirecta(ruta);
+                },
+              )),
+            ],
+          ],
+        ),
+      ),
+      // --------------------------------------------------------
       body: _rutaActual == null
           ? Center(
         child: Column(
@@ -386,10 +501,9 @@ class _ExploradorViewState extends State<ExploradorView> {
                 final esCarpeta = entidad is Directory;
                 final nombre = entidad.path.split(Platform.pathSeparator).last;
                 final extension = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
-                final esSoportado = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'txt', 'json', 'xml'].contains(extension);
                 final esImagen = ['png', 'jpg', 'jpeg', 'gif', 'webp'].contains(extension);
+                final esFavorito = _favoritos.contains(entidad.path);
 
-                // --- NUEVO: Lógica de ícono o miniatura optimizada ---
                 Widget leadingWidget;
                 if (esCarpeta) {
                   leadingWidget = const Icon(Icons.folder, color: Colors.amber, size: 40);
@@ -406,7 +520,7 @@ class _ExploradorViewState extends State<ExploradorView> {
                       child: Image.file(
                         File(entidad.path),
                         fit: BoxFit.cover,
-                        cacheWidth: 120, // Clave para la optimización de memoria (caché de miniaturas)
+                        cacheWidth: 120,
                         errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 24, color: Colors.grey),
                       ),
                     ),
@@ -414,14 +528,19 @@ class _ExploradorViewState extends State<ExploradorView> {
                 } else {
                   leadingWidget = const Icon(Icons.insert_drive_file, color: Colors.grey, size: 40);
                 }
-                // -----------------------------------------------------
 
                 return ListTile(
                   leading: leadingWidget,
-                  title: Text(nombre),
+                  title: Row(
+                    children: [
+                      Expanded(child: Text(nombre, overflow: TextOverflow.ellipsis)),
+                      if (esFavorito) const Icon(Icons.star, color: Colors.amber, size: 16),
+                    ],
+                  ),
                   trailing: PopupMenuButton<String>(
                     onSelected: (valor) {
                       switch (valor) {
+                        case 'favorito': _toggleFavorito(entidad.path); break; // Nuevo caso
                         case 'info': _mostrarMetadatos(entidad); break;
                         case 'copiar':
                           setState(() {
@@ -442,6 +561,7 @@ class _ExploradorViewState extends State<ExploradorView> {
                       }
                     },
                     itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(value: 'favorito', child: Text(esFavorito ? 'Quitar de Favoritos' : 'Añadir a Favoritos')),
                       const PopupMenuItem<String>(value: 'info', child: Text('Información')),
                       const PopupMenuItem<String>(value: 'copiar', child: Text('Copiar')),
                       const PopupMenuItem<String>(value: 'mover', child: Text('Mover')),
@@ -450,18 +570,7 @@ class _ExploradorViewState extends State<ExploradorView> {
                     ],
                     icon: const Icon(Icons.more_vert),
                   ),
-                  onTap: esCarpeta
-                      ? () => _cargarDirectorio(entidad.path)
-                      : () {
-                    if (esSoportado) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => VisorArchivo(archivo: File(entidad.path))),
-                      );
-                    } else {
-                      _mostrarDialogoNoSoportado(entidad.path);
-                    }
-                  },
+                  onTap: () => _abrirRutaDirecta(entidad.path),
                 );
               },
             ),
