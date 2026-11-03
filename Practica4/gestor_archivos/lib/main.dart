@@ -84,7 +84,6 @@ class _ExploradorViewState extends State<ExploradorView> {
   List<FileSystemEntity> _archivos = [];
 
   Future<void> _seleccionarCarpeta() async {
-    // Se agregan los permisos requeridos por Android 11+
     if (Platform.isAndroid) {
       if (!await Permission.manageExternalStorage.isGranted) {
         await Permission.manageExternalStorage.request();
@@ -114,6 +113,70 @@ class _ExploradorViewState extends State<ExploradorView> {
     }
   }
 
+  void _mostrarMetadatos(FileSystemEntity entidad) {
+    final esCarpeta = entidad is Directory;
+    final nombre = entidad.path.split(Platform.pathSeparator).last;
+    String tamanoStr = 'No disponible';
+    String fechaStr = 'No disponible';
+    String tipoMime = esCarpeta ? 'Directorio' : 'Desconocido';
+
+    try {
+      final stats = entidad.statSync();
+      fechaStr = stats.modified.toString().split('.')[0];
+
+      if (!esCarpeta) {
+        tamanoStr = '${(stats.size / 1024).toStringAsFixed(2)} KB';
+        final ext = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
+        switch(ext) {
+          case 'jpg':
+          case 'jpeg': tipoMime = 'image/jpeg'; break;
+          case 'png': tipoMime = 'image/png'; break;
+          case 'gif': tipoMime = 'image/gif'; break;
+          case 'webp': tipoMime = 'image/webp'; break;
+          case 'txt': tipoMime = 'text/plain'; break;
+          case 'json': tipoMime = 'application/json'; break;
+          case 'xml': tipoMime = 'application/xml'; break;
+          case 'pdf': tipoMime = 'application/pdf'; break;
+          case 'mp4': tipoMime = 'video/mp4'; break;
+          case 'mp3': tipoMime = 'audio/mpeg'; break;
+          default: tipoMime = ext.isNotEmpty ? 'application/octet-stream ($ext)' : 'No disponible';
+        }
+      }
+    } catch (e) {
+      // Si falla la lectura, mantiene los valores en "No disponible"
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Metadatos del archivo'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Nombre:', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+            Text(nombre),
+            const SizedBox(height: 8),
+            Text('Tipo (MIME):', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+            Text(tipoMime),
+            const SizedBox(height: 8),
+            Text('Tamaño:', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+            Text(tamanoStr),
+            const SizedBox(height: 8),
+            Text('Modificación:', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
+            Text(fechaStr),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _construirBreadcrumbs() {
     if (_rutaActual == null) return const SizedBox.shrink();
 
@@ -131,7 +194,7 @@ class _ExploradorViewState extends State<ExploradorView> {
         itemCount: partes.length,
         separatorBuilder: (context, index) => const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
         itemBuilder: (context, index) {
-          final esUltimo = index == partes.length - 1; // Se corrigió el error de sintaxis de tu bloque
+          final esUltimo = index == partes.length - 1;
           return TextButton(
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -209,6 +272,10 @@ class _ExploradorViewState extends State<ExploradorView> {
                     color: esCarpeta ? Colors.amber : Colors.grey,
                   ),
                   title: Text(nombre),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.info_outline),
+                    onPressed: () => _mostrarMetadatos(entidad),
+                  ),
                   onTap: esCarpeta
                       ? () => _cargarDirectorio(entidad.path)
                       : () => Navigator.push(
@@ -252,7 +319,7 @@ class VisorArchivo extends StatelessWidget {
           ? PhotoView(
         imageProvider: FileImage(archivo),
         backgroundDecoration: BoxDecoration(color: Theme.of(context).colorScheme.surface),
-        enableRotation: true, // <-- Esta es la propiedad que cumple el requisito
+        enableRotation: true,
       )
           : FutureBuilder<String>(
         future: archivo.readAsString(),
