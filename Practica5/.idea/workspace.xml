@@ -6,7 +6,8 @@
   <component name="ChangeListManager">
     <list default="true" id="a4ccb36e-1dfc-4b38-bcc4-aec45780f635" name="Changes" comment="">
       <change afterPath="$PROJECT_DIR$/Practica5/backend_docker/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cliente_flutter/lib/services/api_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/cliente_flutter/lib/services/api_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cliente_flutter/lib/services/recommendations_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/cliente_flutter/lib/services/recommendations_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../ProyectoMoviles" beforeDir="false" afterPath="$PROJECT_DIR$/../ProyectoMoviles" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
