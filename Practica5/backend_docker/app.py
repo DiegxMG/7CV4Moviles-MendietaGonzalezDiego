@@ -106,3 +106,24 @@ def index():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
+# --- ROL ADMINISTRADOR ---
+@app.route('/admin/dashboard', methods=['GET'])
+def admin_dashboard():
+    req_token = request.headers.get('Authorization')
+    if not req_token:
+        return jsonify({'error': 'No autorizado. Falta token.'}), 401
+
+    admin_user = User.query.filter_by(token=req_token).first()
+    # Validación dura del rol de administrador
+    if not admin_user or admin_user.username != 'admin_maestro':
+        return jsonify({'error': 'Permisos insuficientes'}), 403
+
+    all_users = User.query.all()
+    lista_usuarios = [{'id': u.id, 'username': u.username} for u in all_users]
+
+    return jsonify({
+        'mensaje': 'Acceso autorizado',
+        'usuarios_registrados': lista_usuarios,
+        'estadisticas': 'Total usuarios: ' + str(len(lista_usuarios))
+    }), 200
